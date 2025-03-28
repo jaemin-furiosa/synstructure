@@ -492,7 +492,7 @@ impl<'a> VariantInfo<'a> {
                             // XXX: This has to be call_site to avoid privacy
                             // when deriving on private fields.
                             binding: format_ident!("__binding_{}", i),
-                            style: BindStyle::Ref,
+                            style: BindStyle::Move,
                             field,
                             generics,
                             seen_generics: get_ty_params(field, generics),
@@ -1204,10 +1204,10 @@ impl<'a> Structure<'a> {
     ///     }).to_string(),
     ///
     ///     quote!{
-    ///         &A::B(ref __binding_0, ref __binding_1,) => {
+    ///         &A::B(__binding_0, __binding_1,) => {
     ///             println!(stringify!(B))
     ///         }
-    ///         &A::C(ref __binding_0,) => {
+    ///         &A::C(__binding_0,) => {
     ///             println!(stringify!(C))
     ///         }
     ///     }.to_string()
@@ -2538,10 +2538,10 @@ mod tests {
         assert_eq!(
             s.each(|bi| quote!(do_something(#bi))).to_string(),
             quote! {
-                A::Foo(_, ref __binding_1,) => { { do_something(__binding_1) } }
-                A::Bar(ref __binding_0, ..) => { { do_something(__binding_0) } }
-                A::Baz(_, ref __binding_1, ..) => { { do_something(__binding_1) } }
-                A::Quux(ref __binding_0, _, ref __binding_2,) => {
+                A::Foo(_, __binding_1,) => { { do_something(__binding_1) } }
+                A::Bar(__binding_0, ..) => { { do_something(__binding_0) } }
+                A::Baz(_, __binding_1, ..) => { { do_something(__binding_1) } }
+                A::Quux(__binding_0, _, __binding_2,) => {
                     {
                         do_something(__binding_0)
                     }
