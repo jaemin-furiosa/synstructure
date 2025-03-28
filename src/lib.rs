@@ -1204,10 +1204,10 @@ impl<'a> Structure<'a> {
     ///     }).to_string(),
     ///
     ///     quote!{
-    ///         A::B(ref __binding_0, ref __binding_1,) => {
+    ///         &A::B(ref __binding_0, ref __binding_1,) => {
     ///             println!(stringify!(B))
     ///         }
-    ///         A::C(ref __binding_0,) => {
+    ///         &A::C(ref __binding_0,) => {
     ///             println!(stringify!(C))
     ///         }
     ///     }.to_string()
@@ -1222,7 +1222,7 @@ impl<'a> Structure<'a> {
         for variant in &self.variants {
             let pat = variant.pat();
             let body = f(variant);
-            quote!(#pat => { #body }).to_tokens(&mut t);
+            quote!(&#pat => { #body }).to_tokens(&mut t);
         }
         if self.omitted_variants {
             quote!(_ => {}).to_tokens(&mut t);
