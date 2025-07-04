@@ -9,10 +9,10 @@
 //! ### Trait Implementation
 //! ```
 //! pub trait WalkFields: std::any::Any {
-//!     fn walk_fields(&self, walk: &mut FnMut(&WalkFields));
+//!     fn walk_fields(&self, walk: &mut dyn FnMut(&dyn WalkFields));
 //! }
 //! impl WalkFields for i32 {
-//!     fn walk_fields(&self, _walk: &mut FnMut(&WalkFields)) {}
+//!     fn walk_fields(&self, _walk: &mut dyn FnMut(&dyn WalkFields)) {}
 //! }
 //! ```
 //!
@@ -28,8 +28,8 @@
 //!         extern crate synstructure_test_traits;
 //!
 //!         gen impl synstructure_test_traits::WalkFields for @Self {
-//!             fn walk_fields(&self, walk: &mut FnMut(&synstructure_test_traits::WalkFields)) {
-//!                 match *self { #body }
+//!             fn walk_fields(&self, walk: &mut dyn FnMut(&dyn synstructure_test_traits::WalkFields)) {
+//!                 match self { #body }
 //!             }
 //!         }
 //!     })
@@ -55,13 +55,13 @@
 //!                 impl<T> synstructure_test_traits::WalkFields for A<T>
 //!                     where T: synstructure_test_traits::WalkFields
 //!                 {
-//!                     fn walk_fields(&self, walk: &mut FnMut(&synstructure_test_traits::WalkFields)) {
-//!                         match *self {
-//!                             A::B(ref __binding_0, ref __binding_1,) => {
+//!                     fn walk_fields(&self, walk: &mut dyn FnMut(&dyn synstructure_test_traits::WalkFields)) {
+//!                         match self {
+//!                             A::B(__binding_0, __binding_1,) => {
 //!                                 { walk(__binding_0) }
 //!                                 { walk(__binding_1) }
 //!                             }
-//!                             A::C(ref __binding_0,) => {
+//!                             A::C(__binding_0,) => {
 //!                                 { walk(__binding_0) }
 //!                             }
 //!                         }
@@ -96,7 +96,7 @@
 //!         extern crate synstructure_test_traits;
 //!         gen impl synstructure_test_traits::Interest for @Self {
 //!             fn interesting(&self) -> bool {
-//!                 match *self {
+//!                 match self {
 //!                     #body
 //!                 }
 //!             }
@@ -125,13 +125,13 @@
 //!                     where T: synstructure_test_traits::Interest
 //!                 {
 //!                     fn interesting(&self) -> bool {
-//!                         match *self {
-//!                             A::B(ref __binding_0, ref __binding_1,) => {
+//!                         match self {
+//!                             A::B(__binding_0, __binding_1,) => {
 //!                                 false ||
 //!                                     synstructure_test_traits::Interest::interesting(__binding_0) ||
 //!                                     synstructure_test_traits::Interest::interesting(__binding_1)
 //!                             }
-//!                             A::C(ref __binding_0,) => {
+//!                             A::C(__binding_0,) => {
 //!                                 false ||
 //!                                     synstructure_test_traits::Interest::interesting(__binding_0)
 //!                             }
@@ -164,7 +164,6 @@ extern crate proc_macro;
 use std::collections::HashSet;
 
 use syn::parse::{ParseStream, Parser};
-use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::{
     braced, punctuated, token, Attribute, Data, DeriveInput, Error, Expr, Field, Fields,
@@ -325,10 +324,10 @@ where
 /// `quote!` macro. It expands to a reference to the matched field.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BindingInfo<'a> {
-    /// The name which this `BindingInfo` will bind to.
+    /// The name which this BindingInfo will bind to.
     pub binding: Ident,
 
-    /// The type of binding which this `BindingInfo` will create.
+    /// The type of binding which this BindingInfo will create.
     pub style: BindStyle,
 
     field: &'a Field,
@@ -341,7 +340,7 @@ pub struct BindingInfo<'a> {
     index: usize,
 }
 
-impl ToTokens for BindingInfo<'_> {
+impl<'a> ToTokens for BindingInfo<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         self.binding.to_tokens(tokens);
     }
@@ -370,7 +369,7 @@ impl<'a> BindingInfo<'a> {
     /// assert_eq!(
     ///     s.variants()[0].bindings()[0].pat().to_string(),
     ///     quote! {
-    ///         ref __binding_0
+    ///         __binding_0
     ///     }.to_string()
     /// );
     /// ```
@@ -489,13 +488,11 @@ impl<'a> VariantInfo<'a> {
                     .into_iter()
                     .enumerate()
                     .map(|(i, field)| {
-                        // XXX: binding_span has to be call_site to avoid privacy
-                        // when deriving on private fields, but be located at the field
-                        // span for nicer diagnostics.
-                        let binding_span = Span::call_site().located_at(field.span());
                         BindingInfo {
-                            binding: format_ident!("__binding_{}", i, span = binding_span),
-                            style: BindStyle::Ref,
+                            // XXX: This has to be call_site to avoid privacy
+                            // when deriving on private fields.
+                            binding: format_ident!("__binding_{}", i),
+                            style: BindStyle::Move,
                             field,
                             generics,
                             seen_generics: get_ty_params(field, generics),
@@ -553,7 +550,7 @@ impl<'a> VariantInfo<'a> {
     /// assert_eq!(
     ///     s.variants()[0].pat().to_string(),
     ///     quote!{
-    ///         A::B(ref __binding_0, ref __binding_1,)
+    ///         A::B(__binding_0, __binding_1,)
     ///     }.to_string()
     /// );
     /// ```
@@ -686,7 +683,7 @@ impl<'a> VariantInfo<'a> {
     ///     s.variants()[0].each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
-    ///         A::B(ref __binding_0, ref __binding_1,) => {
+    ///         A::B(__binding_0, __binding_1,) => {
     ///             { println!("{:?}", __binding_0) }
     ///             { println!("{:?}", __binding_1) }
     ///         }
@@ -730,7 +727,7 @@ impl<'a> VariantInfo<'a> {
     ///     s.variants()[0].fold(quote!(0), |acc, bi| quote!(#acc + #bi)).to_string(),
     ///
     ///     quote!{
-    ///         A::B(ref __binding_0, ref __binding_1,) => {
+    ///         A::B(__binding_0, __binding_1,) => {
     ///             0 + __binding_0 + __binding_1
     ///         }
     ///     }.to_string()
@@ -778,10 +775,10 @@ impl<'a> VariantInfo<'a> {
     ///     s.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
-    ///         A::B{ b: ref __binding_1, .. } => {
+    ///         A::B{ b: __binding_1, .. } => {
     ///             { println!("{:?}", __binding_1) }
     ///         }
-    ///         A::C{ a: ref __binding_0, } => {
+    ///         A::C{ a: __binding_0, } => {
     ///             { println!("{:?}", __binding_0) }
     ///         }
     ///     }.to_string()
@@ -824,7 +821,7 @@ impl<'a> VariantInfo<'a> {
     ///     with_a.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
-    ///         A::B{ a: ref __binding_0, .. } => {
+    ///         A::B{ a: __binding_0, .. } => {
     ///             { println!("{:?}", __binding_0) }
     ///         }
     ///     }.to_string()
@@ -834,7 +831,7 @@ impl<'a> VariantInfo<'a> {
     ///     with_b.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
-    ///         A::B{ b: ref __binding_1, .. } => {
+    ///         A::B{ b: __binding_1, .. } => {
     ///             { println!("{:?}", __binding_1) }
     ///         }
     ///     }.to_string()
@@ -894,7 +891,7 @@ impl<'a> VariantInfo<'a> {
     ///             { println!("{:?}", __binding_0) }
     ///             { println!("{:?}", __binding_1) }
     ///         }
-    ///         A::C(ref __binding_0,) => {
+    ///         A::C(__binding_0,) => {
     ///             { println!("{:?}", __binding_0) }
     ///         }
     ///     }.to_string()
@@ -936,11 +933,11 @@ impl<'a> VariantInfo<'a> {
     ///     s.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
-    ///         A::B{ a: ref a, b: ref b, } => {
+    ///         A::B{ a: a, b: b, } => {
     ///             { println!("{:?}", a) }
     ///             { println!("{:?}", b) }
     ///         }
-    ///         A::C{ a: ref __binding_0, } => {
+    ///         A::C{ a: __binding_0, } => {
     ///             { println!("{:?}", __binding_0) }
     ///         }
     ///     }.to_string()
@@ -1108,11 +1105,11 @@ impl<'a> Structure<'a> {
     ///     s.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
-    ///         A::B(ref __binding_0, ref __binding_1,) => {
+    ///         A::B(__binding_0, __binding_1,) => {
     ///             { println!("{:?}", __binding_0) }
     ///             { println!("{:?}", __binding_1) }
     ///         }
-    ///         A::C(ref __binding_0,) => {
+    ///         A::C(__binding_0,) => {
     ///             { println!("{:?}", __binding_0) }
     ///         }
     ///     }.to_string()
@@ -1157,10 +1154,10 @@ impl<'a> Structure<'a> {
     ///     s.fold(quote!(0), |acc, bi| quote!(#acc + #bi)).to_string(),
     ///
     ///     quote!{
-    ///         A::B(ref __binding_0, ref __binding_1,) => {
+    ///         A::B(__binding_0, __binding_1,) => {
     ///             0 + __binding_0 + __binding_1
     ///         }
-    ///         A::C(ref __binding_0,) => {
+    ///         A::C(__binding_0,) => {
     ///             0 + __binding_0
     ///         }
     ///     }.to_string()
@@ -1207,10 +1204,10 @@ impl<'a> Structure<'a> {
     ///     }).to_string(),
     ///
     ///     quote!{
-    ///         A::B(ref __binding_0, ref __binding_1,) => {
+    ///         &A::B(__binding_0, __binding_1,) => {
     ///             println!(stringify!(B))
     ///         }
-    ///         A::C(ref __binding_0,) => {
+    ///         &A::C(__binding_0,) => {
     ///             println!(stringify!(C))
     ///         }
     ///     }.to_string()
@@ -1225,7 +1222,7 @@ impl<'a> Structure<'a> {
         for variant in &self.variants {
             let pat = variant.pat();
             let body = f(variant);
-            quote!(#pat => { #body }).to_tokens(&mut t);
+            quote!(&#pat => { #body }).to_tokens(&mut t);
         }
         if self.omitted_variants {
             quote!(_ => {}).to_tokens(&mut t);
@@ -1261,10 +1258,10 @@ impl<'a> Structure<'a> {
     ///     s.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
-    ///         A::B{ a: ref __binding_0, .. } => {
+    ///         A::B{ a: __binding_0, .. } => {
     ///             { println!("{:?}", __binding_0) }
     ///         }
-    ///         A::C{ a: ref __binding_0, } => {
+    ///         A::C{ a: __binding_0, } => {
     ///             { println!("{:?}", __binding_0) }
     ///         }
     ///     }.to_string()
@@ -1307,10 +1304,10 @@ impl<'a> Structure<'a> {
     ///     with_a.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
-    ///         A::B{ a: ref __binding_0, .. } => {
+    ///         A::B{ a: __binding_0, .. } => {
     ///             { println!("{:?}", __binding_0) }
     ///         }
-    ///         A::C{ a: ref __binding_0, } => {
+    ///         A::C{ a: __binding_0, } => {
     ///             { println!("{:?}", __binding_0) }
     ///         }
     ///     }.to_string()
@@ -1320,7 +1317,7 @@ impl<'a> Structure<'a> {
     ///     with_b.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
-    ///         A::B{ b: ref __binding_1, .. } => {
+    ///         A::B{ b: __binding_1, .. } => {
     ///             { println!("{:?}", __binding_1) }
     ///         }
     ///         A::C{ .. } => {
@@ -1459,7 +1456,7 @@ impl<'a> Structure<'a> {
     ///     s.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
-    ///         A::C(ref __binding_0,) => {
+    ///         A::C(__binding_0,) => {
     ///             { println!("{:?}", __binding_0) }
     ///         }
     ///         _ => {}
@@ -1503,7 +1500,7 @@ impl<'a> Structure<'a> {
     ///     with_c.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
-    ///         A::C(ref __binding_0,) => {
+    ///         A::C(__binding_0,) => {
     ///             { println!("{:?}", __binding_0) }
     ///         }
     ///     }.to_string()
@@ -1513,7 +1510,7 @@ impl<'a> Structure<'a> {
     ///     with_b.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
-    ///         A::B(ref __binding_0, ref __binding_1,) => {
+    ///         A::B(__binding_0, __binding_1,) => {
     ///             { println!("{:?}", __binding_0) }
     ///             { println!("{:?}", __binding_1) }
     ///         }
@@ -1617,11 +1614,11 @@ impl<'a> Structure<'a> {
     ///     s.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
-    ///         A::B{ a: ref a, b: ref b, } => {
+    ///         A::B{ a: a, b: b, } => {
     ///             { println!("{:?}", a) }
     ///             { println!("{:?}", b) }
     ///         }
-    ///         A::C{ a: ref a, } => {
+    ///         A::C{ a: a, } => {
     ///             { println!("{:?}", a) }
     ///         }
     ///     }.to_string()
@@ -2541,10 +2538,10 @@ mod tests {
         assert_eq!(
             s.each(|bi| quote!(do_something(#bi))).to_string(),
             quote! {
-                A::Foo(_, ref __binding_1,) => { { do_something(__binding_1) } }
-                A::Bar(ref __binding_0, ..) => { { do_something(__binding_0) } }
-                A::Baz(_, ref __binding_1, ..) => { { do_something(__binding_1) } }
-                A::Quux(ref __binding_0, _, ref __binding_2,) => {
+                A::Foo(_, __binding_1,) => { { do_something(__binding_1) } }
+                A::Bar(__binding_0, ..) => { { do_something(__binding_0) } }
+                A::Baz(_, __binding_1, ..) => { { do_something(__binding_1) } }
+                A::Quux(__binding_0, _, __binding_2,) => {
                     {
                         do_something(__binding_0)
                     }
