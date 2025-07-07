@@ -1204,16 +1204,33 @@ impl<'a> Structure<'a> {
     ///     }).to_string(),
     ///
     ///     quote!{
-    ///         &A::B(__binding_0, __binding_1,) => {
+    ///         A::B(__binding_0, __binding_1,) => {
     ///             println!(stringify!(B))
     ///         }
-    ///         &A::C(__binding_0,) => {
+    ///         A::C(__binding_0,) => {
     ///             println!(stringify!(C))
     ///         }
     ///     }.to_string()
     /// );
     /// ```
     pub fn each_variant<F, R>(&self, mut f: F) -> TokenStream
+    where
+        F: FnMut(&VariantInfo<'_>) -> R,
+        R: ToTokens,
+    {
+        let mut t = TokenStream::new();
+        for variant in &self.variants {
+            let pat = variant.pat();
+            let body = f(variant);
+            quote!(#pat => { #body }).to_tokens(&mut t);
+        }
+        if self.omitted_variants {
+            quote!(_ => {}).to_tokens(&mut t);
+        }
+        t
+    }
+
+    pub fn each_variant_ref<F, R>(&self, mut f: F) -> TokenStream
     where
         F: FnMut(&VariantInfo<'_>) -> R,
         R: ToTokens,
