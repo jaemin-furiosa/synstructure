@@ -32,4 +32,4 @@ features = ["derive", "parsing", "printing", "clone-impls", "visit", "extra-trai
 synstructure_test_traits = { version = "0.1", path = "test_traits" }
 
 [workspace]
-members = ["test_traits", "test_suite", "test_suite/test_macros"]
+members = ["test_suite", "test_suite/test_macros", "test_traits"]
